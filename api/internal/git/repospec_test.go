@@ -34,6 +34,8 @@ func TestNewRepoSpecFromUrl_Permute(t *testing.T) {
 		{"git::https://git.example.com/", "https://git.example.com/"},
 		{"git@github.com:", "git@github.com:"},
 		{"git@github.com/", "git@github.com:"},
+		{"org-12345@github.com:", "org-12345@github.com:"},
+		{"org-12345@github.com/", "org-12345@github.com:"},
 	}
 	var orgRepos = []string{"someOrg/someRepo", "kubernetes/website"}
 	var pathNames = []string{"README.md", "foo/krusty.txt", ""}
@@ -61,6 +63,9 @@ func TestNewRepoSpecFromUrl_Permute(t *testing.T) {
 					rs, err := NewRepoSpecFromURL(uri)
 					if err != nil {
 						t.Errorf("problem %v", err)
+						if rs == nil {
+							rs = &RepoSpec{}
+						}
 					}
 					if rs.Host != hostSpec {
 						bad = append(bad, []string{"host", uri, rs.Host, hostSpec})
