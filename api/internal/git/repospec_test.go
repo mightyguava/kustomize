@@ -35,6 +35,8 @@ var hostNamesRawAndNormalized = [][]string{
 	{"git::https://git.example.com/", "https://git.example.com/"},
 	{"git@github.com:", "git@github.com:"},
 	{"git@github.com/", "git@github.com:"},
+	{"org-12345@github.com:", "org-12345@github.com:"},
+	{"org-12345@github.com/", "org-12345@github.com:"},
 }
 
 func makeURL(hostFmt, orgRepo, path, href string) string {
@@ -60,6 +62,9 @@ func TestNewRepoSpecFromUrl(t *testing.T) {
 					rs, err := NewRepoSpecFromURL(uri)
 					if err != nil {
 						t.Errorf("problem %v", err)
+						if rs == nil {
+							rs = &RepoSpec{}
+						}
 					}
 					if rs.Host != hostSpec {
 						bad = append(bad, []string{"host", uri, rs.Host, hostSpec})
