@@ -4,7 +4,11 @@
 package krusty_test
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +21,7 @@ import (
 	"sigs.k8s.io/kustomize/api/loader"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 const resourcesField = `resources:
@@ -97,9 +102,45 @@ func runResourceTests(t *testing.T, cases map[string]*remoteResourceCase) {
 			if savedTest.local && !isLocalEnv(req) {
 				t.SkipNow()
 			}
+			configureGitSSHCommand(t)
 			testRemoteResource(req, test)
 		})
 	}
+}
+
+func configureGitSSHCommand(t *testing.T) {
+	t.Helper()
+
+	// This contains a read-only Deploy Key for the kustomize repo.
+	node, err := yaml.ReadFile("testdata/repo_read_only_ssh_key.yaml")
+	if err != nil {
+		t.Fatal("Failed to load ssh key: ", err)
+	}
+	keyB64, err := node.GetString("key")
+	if err != nil {
+		t.Fatal("Failed to load ssh key: ", err)
+	}
+	key, err := base64.StdEncoding.DecodeString(keyB64)
+	if err != nil {
+		t.Fatal("Failed to decode ssh key: ", err)
+	}
+
+	// Write the key to a temp file and use it in SSH
+	f, err := ioutil.TempFile("", "kustomize_ssh")
+	if err != nil {
+		t.Fatal("Failed to write ssh key: ", err)
+	}
+	if _, err = io.Copy(f, bytes.NewReader(key)); err != nil {
+		t.Fatal("Failed to write ssh key: ", err)
+	}
+	cmd := fmt.Sprintf("ssh -i %s", f.Name())
+	const SSHCommandKey = "GIT_SSH_COMMAND"
+	oldCmd := os.Getenv(SSHCommandKey)
+	_ = os.Setenv(SSHCommandKey, cmd)
+	t.Cleanup(func() {
+		_ = os.Setenv(SSHCommandKey, oldCmd)
+		_ = os.Remove(f.Name())
+	})
 }
 
 func TestRemoteLoad(t *testing.T) {
@@ -151,14 +192,12 @@ func TestRemoteResourceSsh(t *testing.T) {
 	// TODO: add ssh keys to server to run these tests
 	tests := map[string]*remoteResourceCase{
 		"scp shorthand": {
-			local: true,
 			kustomization: `
 resources:
 - git@github.com:kubernetes-sigs/kustomize//examples/multibases/dev/?ref=v1.0.6`,
 			expected: multibaseDevExampleBuild,
 		},
 		"full ssh, no ending slash": {
-			local: true,
 			kustomization: `
 resources:
 - ssh://git@github.com/kubernetes-sigs/kustomize//examples/multibases/dev?ref=v1.0.6`,
@@ -255,7 +294,6 @@ resources:
 			expected: multibaseDevExampleBuild,
 		},
 		"ssh no params": {
-			local:         true,
 			kustomization: fmt.Sprintf(resourcesField, sshNoParams),
 			error:         true,
 			expected:      fmt.Sprintf(resourceErrorFormat+fileError, sshNoParams),
